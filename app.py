@@ -72,12 +72,15 @@ st.subheader("📊 Scenario Table")
 st.dataframe(df.round(2), use_container_width=True)
 
 # --- 3D Plot ---
+z_data = df.pivot_table(index='Cutoff', columns='Production', values='Avg NPV').values
 fig = go.Figure(data=[
     go.Surface(
-        z=df.pivot_table(index='Cutoff', columns='Production', values='Avg NPV').values,
+        z=z_data,
         x=prod_vals,
         y=cutoff_vals,
-        colorscale='Viridis'
+        colorscale='Viridis',
+        hovertemplate="<b>Cutoff</b>: %{y}<br><b>Production</b>: %{x}<br><b>NPV</b>: %{z:.2f}M",
+        showscale=True
     )
 ])
 fig.update_layout(
@@ -87,10 +90,14 @@ fig.update_layout(
         yaxis_title='Cut-off Grade (%)',
         zaxis_title='Avg NPV ($M)'
     ),
-    height=600
+    margin=dict(l=20, r=20, t=50, b=20),
+    autosize=True,
+    height=800
 )
+
 st.subheader("🗻 3D Hill of Value")
-st.plotly_chart(fig, use_container_width=True)
+with st.container():
+    st.plotly_chart(fig, use_container_width=True)
 
 # --- Export ---
 st.download_button(

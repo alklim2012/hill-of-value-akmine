@@ -19,13 +19,24 @@ discount_rate = st.sidebar.slider("Discount Rate (%)", 5.0, 15.0, 8.0)
 capex = st.sidebar.number_input("CAPEX ($M)", 100, 5000, 1500)
 opex = st.sidebar.number_input("OPEX ($/t)", 10, 150, 40)
 
+uploaded_file = st.sidebar.file_uploader("📥 Upload Grade-Tonnage CSV", type=["csv"])
+
+if uploaded_file is not None:
+    user_curve = pd.read_csv(uploaded_file)
+    use_curve = True
+else:
+    use_curve = False
+
 def grade_tonnage_curve(cutoff):
-    """Returns tonnage (Mt) and grade (%) based on cutoff"""
-    a = 500  # adjustable
-    b = 0.7  # shape factor
-    tonnage = a * (cutoff ** -b)
-    grade = np.maximum(1.5 - cutoff * 0.5, 0.2)  # simple inverse relationship
-    return tonnage, grade
+    if use_curve:
+        nearest = user_curve.iloc[(user_curve['Cutoff'] - cutoff).abs().argsort()[:1]]
+        return float(nearest['Tonnage']), float(nearest['Grade'])
+    else:
+        a = 500  # adjustable
+        b = 0.7  # shape factor
+        tonnage = a * (cutoff ** -b)
+        grade = np.maximum(1.5 - cutoff * 0.5, 0.2)  # simple inverse relationship
+        return tonnage, grade
 
 def calculate_npv(tonnage, grade, price, recovery, opex, capex, discount_rate, production):
     metal_content = tonnage * grade / 100
@@ -88,3 +99,19 @@ st.download_button(
     file_name="hill_of_value_scenarios.csv",
     mime="text/csv"
 )
+
+st.markdown("""
+### 📄 Grade-Tonnage CSV Format
+
+Upload a CSV file with the following format:
+
+```
+Cutoff,Tonnage,Grade
+0.2,500,0.85
+0.3,420,0.90
+0.4,350,0.95
+...etc.
+```
+
+If no file is uploaded, an automatic curve will be used.
+""")

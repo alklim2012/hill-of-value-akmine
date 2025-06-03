@@ -1,30 +1,44 @@
+# Streamlit Hill of Value App (corrected with data validation)
+import streamlit as st
 import pandas as pd
 import numpy as np
-import plotly.graph_objects as go
 import plotly.express as px
+import plotly.graph_objects as go
 
-# --- Input Parameters ---
-cutoff_range = (0.2, 1.0)
-prod_range = (2.0, 6.0)
-metal_price_mean = 4000
-metal_price_std = 500
-recovery_mean = 85
-recovery_std = 5
-discount_rate = 8.0
-opex = 40
+st.set_page_config(layout="wide")
+
+# --- Sidebar Inputs ---
+st.title("NPVision – Hill of Value Model")
+
+st.sidebar.header("Input Parameters")
+cutoff_range = st.sidebar.slider("Cut-off Range", 0.1, 2.0, (0.2, 1.0), step=0.1)
+prod_range = st.sidebar.slider("Production Range (Mtpa)", 1.0, 10.0, (2.0, 6.0), step=0.5)
+metal_price_mean = st.sidebar.number_input("Metal Price Mean ($/t)", value=4000)
+metal_price_std = st.sidebar.number_input("Metal Price Std Dev", value=500)
+recovery_mean = st.sidebar.number_input("Recovery Mean (%)", value=85)
+recovery_std = st.sidebar.number_input("Recovery Std Dev", value=5)
+discount_rate = st.sidebar.number_input("Discount Rate (%)", value=8.0)
+opex = st.sidebar.number_input("OPEX ($/t ore)", value=40.0)
+
+uploaded_file = st.sidebar.file_uploader("Upload Grade-Tonnage CSV", type="csv")
 
 def grade_tonnage_curve(cutoff):
-    a = 500
-    b = 0.7
-    tonnage = a * (cutoff ** -b)
-    grade = np.maximum(1.5 - cutoff * 0.5, 0.2)
-    return tonnage, grade
-
-def estimate_capex(production):
-    return 1000 + 150 * production
+    if uploaded_file:
+        user_curve = pd.read_csv(uploaded_file)
+        nearest = user_curve.iloc[(user_curve['Cutoff'] - cutoff).abs().argsort()[:1]]
+        return float(nearest['Tonnage']), float(nearest['Grade'])
+    else:
+        a = 500
+        b = 0.7
+        tonnage = a * (cutoff ** -b)
+        grade = np.maximum(1.5 - cutoff * 0.5, 0.2)
+        return tonnage, grade
 
 def estimate_capex_schedule(total_capex, years):
     return [total_capex / 2 if t < 2 else 0 for t in range(int(np.ceil(years)))]
+
+def estimate_capex(production):
+    return 1000 + 150 * production
 
 def calculate_npv(tonnage, grade, price, recovery, opex, production, discount_rate):
     metal_content = tonnage * grade / 100
@@ -63,17 +77,31 @@ for cutoff in cutoff_vals:
 
 df = pd.DataFrame(scenarios)
 
-df.to_csv("hill_of_value_scenarios.csv", index=False)
+# --- Clean Data for Visualization ---
+df_clean = df.dropna(subset=["Production", "CAPEX", "Cutoff", "Avg NPV"])
 
-fig1 = px.scatter(df, x="Production", y="CAPEX", color="Cutoff", size="Avg NPV",
-                  labels={"CAPEX": "CAPEX ($M)", "Production": "Production (Mtpa)"})
-fig1.write_html("capex_vs_production.html")
+# --- Display Table ---
+st.subheader("Scenario Results")
+st.dataframe(df_clean.style.format("{:.2f}"))
 
-fig2 = px.scatter(df, x="Cutoff", y="Avg Life", color="Production", size="Avg NPV",
-                  labels={"Avg Life": "Mine Life (Years)"})
-fig2.write_html("life_vs_cutoff.html")
+# --- Plots ---
+st.subheader("Visualizations")
+col1, col2 = st.columns(2)
+with col1:
+    fig1 = px.scatter(
+        df_clean, x="Production", y="CAPEX", color="Cutoff", size="Avg NPV",
+        labels={"CAPEX": "CAPEX ($M)", "Production": "Production (Mtpa)"})
+    st.plotly_chart(fig1, use_container_width=True)
 
-z_data = df.pivot_table(index='Cutoff', columns='Production', values='Avg NPV').values
+with col2:
+    fig2 = px.scatter(
+        df_clean, x="Cutoff", y="Avg Life", color="Production", size="Avg NPV",
+        labels={"Avg Life": "Mine Life (Years)"})
+    st.plotly_chart(fig2, use_container_width=True)
+
+# --- 3D Surface ---
+st.subheader("Hill of Value – 3D NPV Surface")
+z_data = df_clean.pivot_table(index='Cutoff', columns='Production', values='Avg NPV').values
 fig3 = go.Figure(data=[
     go.Surface(
         z=z_data,
@@ -85,16 +113,14 @@ fig3 = go.Figure(data=[
     )
 ])
 fig3.update_layout(
-    title="Hill of Value - 3D Surface",
     scene=dict(
         xaxis_title='Production (Mtpa)',
         yaxis_title='Cut-off Grade (%)',
         zaxis_title='Avg NPV ($M)'
     ),
-    margin=dict(l=20, r=20, t=50, b=20),
-    autosize=True,
+    margin=dict(l=20, r=20, t=30, b=20),
     height=800
 )
-fig3.write_html("hill_of_value_3d.html")
+st.plotly_chart(fig3, use_container_width=True)
 
-print("✅ Outputs saved: hill_of_value_scenarios.csv, capex_vs_production.html, life_vs_cutoff.html, hill_of_value_3d.html")
+st.success("✅ Model completed.")

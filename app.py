@@ -1,4 +1,4 @@
-# Streamlit Hill of Value App (corrected with data validation)
+# Streamlit Hill of Value App (with NaN and KeyError protection)
 import streamlit as st
 import pandas as pd
 import numpy as np
@@ -16,7 +16,7 @@ prod_range = st.sidebar.slider("Production Range (Mtpa)", 1.0, 10.0, (2.0, 6.0),
 metal_price_mean = st.sidebar.number_input("Metal Price Mean ($/t)", value=4000)
 metal_price_std = st.sidebar.number_input("Metal Price Std Dev", value=500)
 recovery_mean = st.sidebar.number_input("Recovery Mean (%)", value=85)
-recovery_std = st.sidebar.number_input("Recovery Std Dev", value=5)
+recovery_std = st.sidebar.number_input("Recovery Std Dev (%)", value=5)
 discount_rate = st.sidebar.number_input("Discount Rate (%)", value=8.0)
 opex = st.sidebar.number_input("OPEX ($/t ore)", value=40.0)
 
@@ -68,59 +68,63 @@ for cutoff in cutoff_vals:
             npvs.append(npv)
             years_list.append(yrs)
             capex_list.append(capex_val)
-        scenarios.append({
-            "Cutoff": cutoff, "Production": prod,
-            "Avg NPV": np.mean(npvs),
-            "Avg Life": np.mean(years_list),
-            "CAPEX": np.mean(capex_list)
-        })
+        if npvs:  # ensure lists are not empty
+            scenarios.append({
+                "Cutoff": cutoff,
+                "Production": prod,
+                "Avg NPV": np.mean(npvs),
+                "Avg Life": np.mean(years_list),
+                "CAPEX": np.mean(capex_list)
+            })
 
-df = pd.DataFrame(scenarios)
+if scenarios:
+    df = pd.DataFrame(scenarios)
+    df_clean = df.dropna(subset=["Production", "CAPEX", "Cutoff", "Avg NPV"])
 
-# --- Clean Data for Visualization ---
-df_clean = df.dropna(subset=["Production", "CAPEX", "Cutoff", "Avg NPV"])
+    st.subheader("Scenario Results")
+    st.dataframe(df_clean.style.format("{:.2f}"))
 
-# --- Display Table ---
-st.subheader("Scenario Results")
-st.dataframe(df_clean.style.format("{:.2f}"))
+    st.subheader("Visualizations")
+    col1, col2 = st.columns(2)
+    with col1:
+        fig1 = px.scatter(
+            df_clean, x="Production", y="CAPEX", color="Cutoff", size="Avg NPV",
+            labels={"CAPEX": "CAPEX ($M)", "Production": "Production (Mtpa)"})
+        st.plotly_chart(fig1, use_container_width=True)
 
-# --- Plots ---
-st.subheader("Visualizations")
-col1, col2 = st.columns(2)
-with col1:
-    fig1 = px.scatter(
-        df_clean, x="Production", y="CAPEX", color="Cutoff", size="Avg NPV",
-        labels={"CAPEX": "CAPEX ($M)", "Production": "Production (Mtpa)"})
-    st.plotly_chart(fig1, use_container_width=True)
+    with col2:
+        fig2 = px.scatter(
+            df_clean, x="Cutoff", y="Avg Life", color="Production", size="Avg NPV",
+            labels={"Avg Life": "Mine Life (Years)"})
+        st.plotly_chart(fig2, use_container_width=True)
 
-with col2:
-    fig2 = px.scatter(
-        df_clean, x="Cutoff", y="Avg Life", color="Production", size="Avg NPV",
-        labels={"Avg Life": "Mine Life (Years)"})
-    st.plotly_chart(fig2, use_container_width=True)
+    st.subheader("Hill of Value – 3D NPV Surface")
+    try:
+        z_data = df_clean.pivot_table(index='Cutoff', columns='Production', values='Avg NPV').values
+        fig3 = go.Figure(data=[
+            go.Surface(
+                z=z_data,
+                x=prod_vals,
+                y=cutoff_vals,
+                colorscale='Viridis',
+                hovertemplate="<b>Cutoff</b>: %{y}<br><b>Production</b>: %{x}<br><b>NPV</b>: %{z:.2f}M",
+                showscale=True
+            )
+        ])
+        fig3.update_layout(
+            scene=dict(
+                xaxis_title='Production (Mtpa)',
+                yaxis_title='Cut-off Grade (%)',
+                zaxis_title='Avg NPV ($M)'
+            ),
+            margin=dict(l=20, r=20, t=30, b=20),
+            height=800
+        )
+        st.plotly_chart(fig3, use_container_width=True)
+    except Exception as e:
+        st.warning(f"3D plot error: {e}")
 
-# --- 3D Surface ---
-st.subheader("Hill of Value – 3D NPV Surface")
-z_data = df_clean.pivot_table(index='Cutoff', columns='Production', values='Avg NPV').values
-fig3 = go.Figure(data=[
-    go.Surface(
-        z=z_data,
-        x=prod_vals,
-        y=cutoff_vals,
-        colorscale='Viridis',
-        hovertemplate="<b>Cutoff</b>: %{y}<br><b>Production</b>: %{x}<br><b>NPV</b>: %{z:.2f}M",
-        showscale=True
-    )
-])
-fig3.update_layout(
-    scene=dict(
-        xaxis_title='Production (Mtpa)',
-        yaxis_title='Cut-off Grade (%)',
-        zaxis_title='Avg NPV ($M)'
-    ),
-    margin=dict(l=20, r=20, t=30, b=20),
-    height=800
-)
-st.plotly_chart(fig3, use_container_width=True)
+    st.download_button("Download Results CSV", df_clean.to_csv(index=False), file_name="hill_of_value_results.csv")
 
-st.success("✅ Model completed.")
+else:
+    st.warning("No valid scenarios generated. Please adjust input parameters.")

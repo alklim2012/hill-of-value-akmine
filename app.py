@@ -16,7 +16,6 @@ metal_price_std = st.sidebar.number_input("Price Std Dev", 0, 5000, 500)
 recovery_mean = st.sidebar.slider("Recovery (%)", 50, 95, 85)
 recovery_std = st.sidebar.slider("Recovery Std Dev (%)", 0, 15, 5)
 discount_rate = st.sidebar.slider("Discount Rate (%)", 5.0, 15.0, 8.0)
-capex = st.sidebar.number_input("CAPEX ($M)", 100, 5000, 1500)
 opex = st.sidebar.number_input("OPEX ($/t)", 10, 150, 40)
 
 uploaded_file = st.sidebar.file_uploader("📥 Upload Grade-Tonnage CSV", type=["csv"])
@@ -38,13 +37,20 @@ def grade_tonnage_curve(cutoff):
         grade = np.maximum(1.5 - cutoff * 0.5, 0.2)  # simple inverse relationship
         return tonnage, grade
 
-def calculate_npv(tonnage, grade, price, recovery, opex, capex, discount_rate, production):
+def estimate_capex(production):
+    # Example CAPEX function: base + slope * production
+    base_capex = 1000  # in $M
+    capex_slope = 150   # per Mtpa
+    return base_capex + capex_slope * production
+
+def calculate_npv(tonnage, grade, price, recovery, opex, production, discount_rate):
     metal_content = tonnage * grade / 100
     revenue = metal_content * recovery / 100 * price
     years = tonnage / production
     annual_cashflow = (revenue - opex * tonnage) / years
+    capex = estimate_capex(production)
     npv = sum([annual_cashflow / ((1 + discount_rate / 100) ** t) for t in range(1, int(np.ceil(years)) + 1)]) - capex
-    return npv, years
+    return npv, years, capex
 
 # --- Scenario Generation ---
 cutoff_vals = np.arange(cutoff_range[0], cutoff_range[1] + 0.01, 0.1)
@@ -55,16 +61,19 @@ for cutoff in cutoff_vals:
     for prod in prod_vals:
         npvs = []
         years_list = []
+        capex_list = []
         for _ in range(250):
             price = np.random.normal(metal_price_mean, metal_price_std)
             recovery = np.random.normal(recovery_mean, recovery_std)
             tonnage, grade = grade_tonnage_curve(cutoff)
-            npv, yrs = calculate_npv(tonnage, grade, price, recovery, opex, capex, discount_rate, prod)
+            npv, yrs, capex_val = calculate_npv(tonnage, grade, price, recovery, opex, prod, discount_rate)
             npvs.append(npv)
             years_list.append(yrs)
+            capex_list.append(capex_val)
         avg_npv = np.mean(npvs)
         avg_years = np.mean(years_list)
-        scenarios.append({"Cutoff": cutoff, "Production": prod, "Avg NPV": avg_npv, "Avg Life": avg_years})
+        avg_capex = np.mean(capex_list)
+        scenarios.append({"Cutoff": cutoff, "Production": prod, "Avg NPV": avg_npv, "Avg Life": avg_years, "CAPEX": avg_capex})
 
 # --- DataFrame ---
 df = pd.DataFrame(scenarios)

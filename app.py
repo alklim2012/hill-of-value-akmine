@@ -37,8 +37,12 @@ def grade_tonnage_curve(cutoff):
         grade = np.maximum(1.5 - cutoff * 0.5, 0.2)  # simple inverse relationship
         return tonnage, grade
 
+def estimate_capex_schedule(total_capex, years):
+    # Assume CAPEX is spread over the first 2 years equally
+    capex_schedule = [total_capex / 2 if t < 2 else 0 for t in range(int(np.ceil(years)))]
+    return capex_schedule
+
 def estimate_capex(production):
-    # Example CAPEX function: base + slope * production
     base_capex = 1000  # in $M
     capex_slope = 150   # per Mtpa
     return base_capex + capex_slope * production
@@ -49,7 +53,11 @@ def calculate_npv(tonnage, grade, price, recovery, opex, production, discount_ra
     years = tonnage / production
     annual_cashflow = (revenue - opex * tonnage) / years
     capex = estimate_capex(production)
-    npv = sum([annual_cashflow / ((1 + discount_rate / 100) ** t) for t in range(1, int(np.ceil(years)) + 1)]) - capex
+    capex_schedule = estimate_capex_schedule(capex, years)
+    cashflows = [annual_cashflow] * int(np.ceil(years))
+    npv = 0
+    for t in range(int(np.ceil(years))):
+        npv += (cashflows[t] - capex_schedule[t]) / ((1 + discount_rate / 100) ** (t + 1))
     return npv, years, capex
 
 # --- Scenario Generation ---
@@ -79,6 +87,19 @@ for cutoff in cutoff_vals:
 df = pd.DataFrame(scenarios)
 st.subheader("📊 Scenario Table")
 st.dataframe(df.round(2), use_container_width=True)
+
+# --- Interactive Graphs ---
+import plotly.express as px
+
+st.subheader("📈 Interactive CAPEX vs Production")
+fig1 = px.scatter(df, x="Production", y="CAPEX", color="Cutoff", size="Avg NPV",
+                 labels={"CAPEX": "CAPEX ($M)", "Production": "Production (Mtpa)"})
+st.plotly_chart(fig1, use_container_width=True)
+
+st.subheader("📉 Project Life vs Cut-off")
+fig2 = px.scatter(df, x="Cutoff", y="Avg Life", color="Production", size="Avg NPV",
+                 labels={"Avg Life": "Mine Life (Years)"})
+st.plotly_chart(fig2, use_container_width=True)
 
 # --- 3D Plot ---
 z_data = df.pivot_table(index='Cutoff', columns='Production', values='Avg NPV').values

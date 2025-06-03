@@ -1,10 +1,9 @@
-# Streamlit is not available in the current environment, so we replace Streamlit-based code with standalone script-compatible logic
 import pandas as pd
 import numpy as np
 import plotly.graph_objects as go
 import plotly.express as px
 
-# --- Input Parameters (stand-in for sidebar inputs) ---
+# --- Input Parameters ---
 cutoff_range = (0.2, 1.0)
 prod_range = (2.0, 6.0)
 metal_price_mean = 4000
@@ -13,29 +12,19 @@ recovery_mean = 85
 recovery_std = 5
 discount_rate = 8.0
 opex = 40
-uploaded_file = None  # Replace with file path if testing custom curve CSV
-
-use_curve = False
-if uploaded_file:
-    user_curve = pd.read_csv(uploaded_file)
-    use_curve = True
 
 def grade_tonnage_curve(cutoff):
-    if use_curve:
-        nearest = user_curve.iloc[(user_curve['Cutoff'] - cutoff).abs().argsort()[:1]]
-        return float(nearest['Tonnage']), float(nearest['Grade'])
-    else:
-        a = 500  # adjustable
-        b = 0.7  # shape factor
-        tonnage = a * (cutoff ** -b)
-        grade = np.maximum(1.5 - cutoff * 0.5, 0.2)
-        return tonnage, grade
-
-def estimate_capex_schedule(total_capex, years):
-    return [total_capex / 2 if t < 2 else 0 for t in range(int(np.ceil(years)))]
+    a = 500
+    b = 0.7
+    tonnage = a * (cutoff ** -b)
+    grade = np.maximum(1.5 - cutoff * 0.5, 0.2)
+    return tonnage, grade
 
 def estimate_capex(production):
     return 1000 + 150 * production
+
+def estimate_capex_schedule(total_capex, years):
+    return [total_capex / 2 if t < 2 else 0 for t in range(int(np.ceil(years)))]
 
 def calculate_npv(tonnage, grade, price, recovery, opex, production, discount_rate):
     metal_content = tonnage * grade / 100
@@ -74,10 +63,8 @@ for cutoff in cutoff_vals:
 
 df = pd.DataFrame(scenarios)
 
-# Save CSV output
 df.to_csv("hill_of_value_scenarios.csv", index=False)
 
-# Generate visualizations
 fig1 = px.scatter(df, x="Production", y="CAPEX", color="Cutoff", size="Avg NPV",
                   labels={"CAPEX": "CAPEX ($M)", "Production": "Production (Mtpa)"})
 fig1.write_html("capex_vs_production.html")

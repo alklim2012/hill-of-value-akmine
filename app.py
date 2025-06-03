@@ -1,4 +1,4 @@
-# Streamlit Hill of Value App (with NaN and KeyError protection)
+# Streamlit Hill of Value App (with safe plotting and type enforcement)
 import streamlit as st
 import pandas as pd
 import numpy as np
@@ -68,7 +68,7 @@ for cutoff in cutoff_vals:
             npvs.append(npv)
             years_list.append(yrs)
             capex_list.append(capex_val)
-        if npvs:  # ensure lists are not empty
+        if npvs:
             scenarios.append({
                 "Cutoff": cutoff,
                 "Production": prod,
@@ -78,53 +78,64 @@ for cutoff in cutoff_vals:
             })
 
 if scenarios:
-    df = pd.DataFrame(scenarios)
-    df_clean = df.dropna(subset=["Production", "CAPEX", "Cutoff", "Avg NPV"])
+    df = pd.DataFrame(scenarios).dropna()
 
-    st.subheader("Scenario Results")
-    st.dataframe(df_clean.style.format("{:.2f}"))
-
-    st.subheader("Visualizations")
-    col1, col2 = st.columns(2)
-    with col1:
-        fig1 = px.scatter(
-            df_clean, x="Production", y="CAPEX", color="Cutoff", size="Avg NPV",
-            labels={"CAPEX": "CAPEX ($M)", "Production": "Production (Mtpa)"})
-        st.plotly_chart(fig1, use_container_width=True)
-
-    with col2:
-        fig2 = px.scatter(
-            df_clean, x="Cutoff", y="Avg Life", color="Production", size="Avg NPV",
-            labels={"Avg Life": "Mine Life (Years)"})
-        st.plotly_chart(fig2, use_container_width=True)
-
-    st.subheader("Hill of Value – 3D NPV Surface")
     try:
-        z_data = df_clean.pivot_table(index='Cutoff', columns='Production', values='Avg NPV').values
-        fig3 = go.Figure(data=[
-            go.Surface(
-                z=z_data,
-                x=prod_vals,
-                y=cutoff_vals,
-                colorscale='Viridis',
-                hovertemplate="<b>Cutoff</b>: %{y}<br><b>Production</b>: %{x}<br><b>NPV</b>: %{z:.2f}M",
-                showscale=True
+        df_clean = df.astype({
+            "Cutoff": float,
+            "Production": float,
+            "Avg NPV": float,
+            "Avg Life": float,
+            "CAPEX": float
+        })
+        df_clean = df_clean[(df_clean["Avg NPV"] > 0) & (df_clean["CAPEX"] > 0) & (df_clean["Avg Life"] > 0)]
+
+        st.subheader("Scenario Results")
+        st.dataframe(df_clean.style.format("{:.2f}"))
+
+        st.subheader("Visualizations")
+        col1, col2 = st.columns(2)
+        with col1:
+            fig1 = px.scatter(
+                df_clean, x="Production", y="CAPEX", color="Cutoff", size="Avg NPV",
+                labels={"CAPEX": "CAPEX ($M)", "Production": "Production (Mtpa)"})
+            st.plotly_chart(fig1, use_container_width=True)
+
+        with col2:
+            fig2 = px.scatter(
+                df_clean, x="Cutoff", y="Avg Life", color="Production", size="Avg NPV",
+                labels={"Avg Life": "Mine Life (Years)"})
+            st.plotly_chart(fig2, use_container_width=True)
+
+        st.subheader("Hill of Value – 3D NPV Surface")
+        try:
+            z_data = df_clean.pivot_table(index='Cutoff', columns='Production', values='Avg NPV').values
+            fig3 = go.Figure(data=[
+                go.Surface(
+                    z=z_data,
+                    x=prod_vals,
+                    y=cutoff_vals,
+                    colorscale='Viridis',
+                    hovertemplate="<b>Cutoff</b>: %{y}<br><b>Production</b>: %{x}<br><b>NPV</b>: %{z:.2f}M",
+                    showscale=True
+                )
+            ])
+            fig3.update_layout(
+                scene=dict(
+                    xaxis_title='Production (Mtpa)',
+                    yaxis_title='Cut-off Grade (%)',
+                    zaxis_title='Avg NPV ($M)'
+                ),
+                margin=dict(l=20, r=20, t=30, b=20),
+                height=800
             )
-        ])
-        fig3.update_layout(
-            scene=dict(
-                xaxis_title='Production (Mtpa)',
-                yaxis_title='Cut-off Grade (%)',
-                zaxis_title='Avg NPV ($M)'
-            ),
-            margin=dict(l=20, r=20, t=30, b=20),
-            height=800
-        )
-        st.plotly_chart(fig3, use_container_width=True)
-    except Exception as e:
-        st.warning(f"3D plot error: {e}")
+            st.plotly_chart(fig3, use_container_width=True)
+        except Exception as e:
+            st.warning(f"3D plot error: {e}")
 
-    st.download_button("Download Results CSV", df_clean.to_csv(index=False), file_name="hill_of_value_results.csv")
+        st.download_button("Download Results CSV", df_clean.to_csv(index=False), file_name="hill_of_value_results.csv")
 
+    except Exception as err:
+        st.error(f"❌ Error while cleaning or plotting data: {err}")
 else:
     st.warning("No valid scenarios generated. Please adjust input parameters.")

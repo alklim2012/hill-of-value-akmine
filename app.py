@@ -103,16 +103,28 @@ if st.session_state.run_clicked:
 
         st.subheader("📈 CAPEX vs Production")
         try:
-            fig1 = px.scatter(df_plot, x="Production", y="CAPEX", color="Cutoff", size="Avg NPV",
-                             labels={"Production": "Production (Mtpa)", "CAPEX": "CAPEX ($M)"})
+            fig1 = px.scatter(
+                df_plot,
+                x="Production",
+                y="CAPEX",
+                color="Cutoff",
+                size=df_plot["Avg NPV"].abs(),
+                labels={"Production": "Production (Mtpa)", "CAPEX": "CAPEX ($M)"}
+            )
             st.plotly_chart(fig1, use_container_width=True)
         except Exception as e:
             st.error(f"2D plot error: {e}")
 
         st.subheader("📉 Life vs Cut-off")
         try:
-            fig2 = px.scatter(df_plot, x="Cutoff", y="Avg Life", color="Production", size="Avg NPV",
-                             labels={"Cutoff": "Cut-off (%)", "Avg Life": "Mine Life (yrs)"})
+            fig2 = px.scatter(
+                df_plot,
+                x="Cutoff",
+                y="Avg Life",
+                color="Production",
+                size=df_plot["Avg NPV"].abs(),
+                labels={"Cutoff": "Cut-off (%)", "Avg Life": "Mine Life (yrs)"}
+            )
             st.plotly_chart(fig2, use_container_width=True)
         except Exception as e:
             st.error(f"Life vs Cut-off plot error: {e}")

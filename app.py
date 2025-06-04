@@ -61,8 +61,8 @@ def calculate_npv(tonnage, grade, price, recovery, opex, production, discount_ra
     return npv, years, capex
 
 if st.session_state.run_clicked:
-    cutoff_vals = np.arange(cutoff_range[0], cutoff_range[1] + 0.01, 0.1)
-    prod_vals = np.arange(prod_range[0], prod_range[1] + 0.01, 0.5)
+    cutoff_vals = np.round(np.arange(cutoff_range[0], cutoff_range[1] + 0.01, 0.1), 2)
+    prod_vals = np.round(np.arange(prod_range[0], prod_range[1] + 0.01, 0.5), 2)
 
     scenarios = []
     total_runs = len(cutoff_vals) * len(prod_vals)
@@ -71,7 +71,7 @@ if st.session_state.run_clicked:
     for i, cutoff in enumerate(cutoff_vals):
         for j, prod in enumerate(prod_vals):
             npvs, years_list, capex_list = [], [], []
-            for _ in range(50):  # Reduced to speed up
+            for _ in range(50):
                 price = np.random.normal(metal_price_mean, metal_price_std)
                 recovery = np.random.normal(recovery_mean, recovery_std)
                 tonnage, grade = grade_tonnage_curve(cutoff)
@@ -102,27 +102,42 @@ if st.session_state.run_clicked:
         st.dataframe(df_plot.round(2), use_container_width=True)
 
         st.subheader("📈 CAPEX vs Production")
-        fig1 = px.scatter(df_plot, x="Production", y="CAPEX", color="Cutoff", size="Avg NPV")
-        st.plotly_chart(fig1, use_container_width=True)
+        try:
+            fig1 = px.scatter(df_plot, x="Production", y="CAPEX", color="Cutoff", size="Avg NPV",
+                             labels={"Production": "Production (Mtpa)", "CAPEX": "CAPEX ($M)"})
+            st.plotly_chart(fig1, use_container_width=True)
+        except Exception as e:
+            st.error(f"2D plot error: {e}")
 
         st.subheader("📉 Life vs Cut-off")
-        fig2 = px.scatter(df_plot, x="Cutoff", y="Avg Life", color="Production", size="Avg NPV")
-        st.plotly_chart(fig2, use_container_width=True)
+        try:
+            fig2 = px.scatter(df_plot, x="Cutoff", y="Avg Life", color="Production", size="Avg NPV",
+                             labels={"Cutoff": "Cut-off (%)", "Avg Life": "Mine Life (yrs)"})
+            st.plotly_chart(fig2, use_container_width=True)
+        except Exception as e:
+            st.error(f"Life vs Cut-off plot error: {e}")
 
         try:
-            z_data = df_plot.pivot_table(index='Cutoff', columns='Production', values='Avg NPV').values
+            z_data = df_plot.pivot(index='Cutoff', columns='Production', values='Avg NPV').values
+            x_vals = df_plot['Production'].unique()
+            y_vals = df_plot['Cutoff'].unique()
             fig3 = go.Figure(data=[
-                go.Surface(z=z_data, x=prod_vals, y=cutoff_vals, colorscale='Viridis')
+                go.Surface(z=z_data, x=x_vals, y=y_vals, colorscale='Viridis',
+                           hovertemplate="Cutoff: %{y}<br>Prod: %{x}<br>NPV: %{z:.2f}")
             ])
             fig3.update_layout(
-                title="Hill of Value - 3D Surface",
-                scene=dict(xaxis_title='Production (Mtpa)', yaxis_title='Cut-off (%)', zaxis_title='NPV'),
+                title="🗻 3D Hill of Value (NPV)",
+                scene=dict(
+                    xaxis_title='Production (Mtpa)',
+                    yaxis_title='Cut-off (%)',
+                    zaxis_title='Avg NPV ($M)'
+                ),
                 height=700
             )
             st.subheader("🗻 3D Hill of Value")
             st.plotly_chart(fig3, use_container_width=True)
         except Exception as e:
-            st.error(f"3D plot error: {e}")
+            st.error(f"3D Hill error: {e}")
 
         st.download_button("📥 Download Results", data=df_plot.to_csv(index=False), file_name="hill_scenarios.csv", mime="text/csv")
 else:

@@ -19,13 +19,19 @@ discount_rate = st.sidebar.slider("Discount Rate (%)", 5.0, 15.0, 8.0)
 opex = st.sidebar.number_input("OPEX ($/t)", 10, 150, 40)
 
 uploaded_file = st.sidebar.file_uploader("📥 Upload Grade-Tonnage CSV", type=["csv"])
-run_simulation = st.sidebar.button("🚀 Start Simulation")
 
 if uploaded_file is not None:
     user_curve = pd.read_csv(uploaded_file)
     use_curve = True
 else:
     use_curve = False
+
+# Session state to control persistent run
+if "run_clicked" not in st.session_state:
+    st.session_state.run_clicked = False
+
+if st.sidebar.button("🚀 Start Simulation"):
+    st.session_state.run_clicked = True
 
 def grade_tonnage_curve(cutoff):
     if use_curve:
@@ -55,7 +61,7 @@ def calculate_npv(tonnage, grade, price, recovery, opex, production, discount_ra
     npv = sum([(cashflows[t] - capex_schedule[t]) / ((1 + discount_rate / 100) ** (t + 1)) for t in range(len(cashflows))])
     return npv, years, capex
 
-if run_simulation:
+if st.session_state.run_clicked:
     cutoff_vals = np.arange(cutoff_range[0], cutoff_range[1] + 0.01, 0.1)
     prod_vals = np.arange(prod_range[0], prod_range[1] + 0.01, 0.5)
 
@@ -114,4 +120,4 @@ if run_simulation:
 
     st.download_button("📥 Download Results", data=df_plot.to_csv(index=False), file_name="hill_scenarios.csv", mime="text/csv")
 else:
-    st.warning("👈 Set parameters and press '🚀 Start Simulation' to see results.")
+    st.info("👈 Set parameters and press '🚀 Start Simulation' to see results.")

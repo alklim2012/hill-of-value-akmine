@@ -26,7 +26,6 @@ if uploaded_file is not None:
 else:
     use_curve = False
 
-# Session state to control persistent run
 if "run_clicked" not in st.session_state:
     st.session_state.run_clicked = False
 
@@ -66,10 +65,13 @@ if st.session_state.run_clicked:
     prod_vals = np.arange(prod_range[0], prod_range[1] + 0.01, 0.5)
 
     scenarios = []
-    for cutoff in cutoff_vals:
-        for prod in prod_vals:
+    total_runs = len(cutoff_vals) * len(prod_vals)
+    progress = st.progress(0, text="⏳ Running scenarios...")
+
+    for i, cutoff in enumerate(cutoff_vals):
+        for j, prod in enumerate(prod_vals):
             npvs, years_list, capex_list = [], [], []
-            for _ in range(250):
+            for _ in range(50):  # Reduced to speed up
                 price = np.random.normal(metal_price_mean, metal_price_std)
                 recovery = np.random.normal(recovery_mean, recovery_std)
                 tonnage, grade = grade_tonnage_curve(cutoff)
@@ -78,12 +80,11 @@ if st.session_state.run_clicked:
                 years_list.append(yrs)
                 capex_list.append(capex_val)
             scenarios.append({"Cutoff": cutoff, "Production": prod, "Avg NPV": np.mean(npvs), "Avg Life": np.mean(years_list), "CAPEX": np.mean(capex_list)})
+            progress.progress(((i * len(prod_vals) + j + 1) / total_runs), text=f"✅ {int(((i * len(prod_vals) + j + 1) / total_runs)*100)}% Complete")
 
     df = pd.DataFrame(scenarios)
 
     df_plot = df.dropna()
-    df_plot = df_plot[df_plot["Avg NPV"] > 0]
-    df_plot = df_plot[df_plot["CAPEX"] > 0]
     df_plot = df_plot.astype({
         "Cutoff": float,
         "Production": float,
@@ -92,32 +93,37 @@ if st.session_state.run_clicked:
         "Avg Life": float
     })
 
-    st.subheader("📊 Scenario Table")
-    st.dataframe(df_plot.round(2), use_container_width=True)
+    if df_plot.empty:
+        st.error("❌ No scenarios produced valid NPV results. Adjust your inputs and try again.")
+    else:
+        st.success("✅ Simulation complete.")
 
-    st.subheader("📈 CAPEX vs Production")
-    fig1 = px.scatter(df_plot, x="Production", y="CAPEX", color="Cutoff", size="Avg NPV")
-    st.plotly_chart(fig1, use_container_width=True)
+        st.subheader("📊 Scenario Table")
+        st.dataframe(df_plot.round(2), use_container_width=True)
 
-    st.subheader("📉 Life vs Cut-off")
-    fig2 = px.scatter(df_plot, x="Cutoff", y="Avg Life", color="Production", size="Avg NPV")
-    st.plotly_chart(fig2, use_container_width=True)
+        st.subheader("📈 CAPEX vs Production")
+        fig1 = px.scatter(df_plot, x="Production", y="CAPEX", color="Cutoff", size="Avg NPV")
+        st.plotly_chart(fig1, use_container_width=True)
 
-    try:
-        z_data = df_plot.pivot_table(index='Cutoff', columns='Production', values='Avg NPV').values
-        fig3 = go.Figure(data=[
-            go.Surface(z=z_data, x=prod_vals, y=cutoff_vals, colorscale='Viridis')
-        ])
-        fig3.update_layout(
-            title="Hill of Value - 3D Surface",
-            scene=dict(xaxis_title='Production (Mtpa)', yaxis_title='Cut-off (%)', zaxis_title='NPV'),
-            height=700
-        )
-        st.subheader("🗻 3D Hill of Value")
-        st.plotly_chart(fig3, use_container_width=True)
-    except Exception as e:
-        st.error(f"3D plot error: {e}")
+        st.subheader("📉 Life vs Cut-off")
+        fig2 = px.scatter(df_plot, x="Cutoff", y="Avg Life", color="Production", size="Avg NPV")
+        st.plotly_chart(fig2, use_container_width=True)
 
-    st.download_button("📥 Download Results", data=df_plot.to_csv(index=False), file_name="hill_scenarios.csv", mime="text/csv")
+        try:
+            z_data = df_plot.pivot_table(index='Cutoff', columns='Production', values='Avg NPV').values
+            fig3 = go.Figure(data=[
+                go.Surface(z=z_data, x=prod_vals, y=cutoff_vals, colorscale='Viridis')
+            ])
+            fig3.update_layout(
+                title="Hill of Value - 3D Surface",
+                scene=dict(xaxis_title='Production (Mtpa)', yaxis_title='Cut-off (%)', zaxis_title='NPV'),
+                height=700
+            )
+            st.subheader("🗻 3D Hill of Value")
+            st.plotly_chart(fig3, use_container_width=True)
+        except Exception as e:
+            st.error(f"3D plot error: {e}")
+
+        st.download_button("📥 Download Results", data=df_plot.to_csv(index=False), file_name="hill_scenarios.csv", mime="text/csv")
 else:
     st.info("👈 Set parameters and press '🚀 Start Simulation' to see results.")
